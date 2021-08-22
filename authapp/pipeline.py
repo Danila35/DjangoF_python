@@ -1,33 +1,32 @@
-#from urllib.request import urlopen
+from collections import OrderedDict
+from datetime import datetime
+from urllib.parse import urlencode, urlparse, urlunparse
 
-#from django.core.files.base import ContentFile
-#from social_core.exceptions import AuthForbidden
-#from authapp.models import ShopClientProfile
+import requests
+from django.utils import timezone
+from social_core.exceptions import AuthForbidden
+
+from authapp.models import ShopUserProfile
 
 
-#def save_user_profile(backend, user, response, *args, **kwargs):
-    #print(response)
-    #if backend.name == "google-oauth2":
-        #if 'gender' in response.keys():
-            #if response['gender'] == 'male':
-                #user.shopclientprofile.gender = ShopClientProfile.MALE
-            #else:
-                #user.shopclientprofile.gender = ShopClientProfile.FEMALE
+def save_user_profile(backend, user, response, *args, **kwargs):
+    if backend.name != 'vk-oauth2':
+        return
 
-        #if 'tagline' in response.keys():
-            #user.shopclientprofile.tagline = response['tagline']
+    api_url = urlunparse(('https', 'api.vk.com', '/method/users.get', None,
+                            urlencode(OrderedDict(fields=','.join(('bdate', 'sex', 'about')),
+                            access_token=response['access_token'], v='5.131')),
+                          None))
+    resp = requests.get(api_url)
+    if resp.status_code != 200:
+        return
 
-        #if 'aboutMe' in response.keys():
-            #user.shopclientprofile.aboutMe = response['aboutMe']
+    data = resp.json()['response'][0]
+    if data['sex']:
+        user.shopuserprofile.gender = ShopUserProfile.MALE if data['sex'] == 2 else ShopUserProfile.FEMALE
 
-        #if 'picture' in response.keys():
-            #if not user.avatar:
-                #url = response['picture']
-                #user.avatar.save(f'avatar_{user.username}.jpg', ContentFile(urlopen(url).read()))
+    if data['about']:
+        user.shopuserprofile.about_me = data['about']
 
-        #if 'ageRange' in response.keys():
-            #min_age = response['ageRange']['min']
-            #if int(min_age) < 18:
-                #user.delete()
-                #raise AuthForbidden('social_core.backends.google.GoogleOAuth2')
-        #user.save()
+
+    user.save()
